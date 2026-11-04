@@ -3,6 +3,7 @@ package consignment
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,7 @@ import (
 var (
 	ErrMemberNotFound  = errors.New("member tidak ditemukan")
 	ErrMemberCodeTaken = errors.New("kode member sudah dipakai")
+	ErrMemberInUse     = errors.New("member sudah punya produk atau riwayat, jadi tidak bisa dihapus; nonaktifkan saja")
 )
 
 type Service struct {
@@ -77,6 +79,33 @@ func (s *Service) UpdateMember(ctx context.Context, m *Member) error {
 		m.ID, m.Code, m.Name, m.Phone, m.Address, m.BankName, m.BankAccountNumber, m.BankAccountName,
 		m.CommissionBps, m.IsActive, m.Email).Scan(&m.ID)
 	return memberError(err)
+}
+
+// DeleteMember hanya berhasil untuk member tanpa produk dan dokumen; foreign key yang menolak sisanya.
+// Folder Drive-nya dibiarkan, tetapi akses member dicabut. Dikunci bersama SyncMemberFolder supaya tidak ada share baru setelah dihapus.
+func (s *Service) DeleteMember(ctx context.Context, id int64) error {
+	s.driveMu.Lock()
+	defer s.driveMu.Unlock()
+
+	var folderID, permissionID string
+	err := s.db.QueryRow(ctx, `
+		DELETE FROM members WHERE id = $1
+		RETURNING COALESCE(drive_folder_id, ''), COALESCE(drive_permission_id, '')`, id).
+		Scan(&folderID, &permissionID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return ErrMemberNotFound
+	case pgerr.IsForeignKey(err):
+		return ErrMemberInUse
+	case err != nil:
+		return err
+	}
+	if s.drive != nil && permissionID != "" {
+		if err := s.drive.Unshare(ctx, folderID, permissionID); err != nil {
+			slog.Error("gagal mencabut akses folder member yang dihapus", "folder", folderID, "error", err)
+		}
+	}
+	return nil
 }
 
 func memberError(err error) error {

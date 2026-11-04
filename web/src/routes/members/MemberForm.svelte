@@ -1,6 +1,7 @@
 <script lang="ts">
+  import Icon from '../../components/Icon.svelte'
   import Modal from '../../components/Modal.svelte'
-  import { post, put } from '../../lib/api'
+  import { del, post, put } from '../../lib/api'
   import { focusFirst } from '../../lib/focus'
   import { bpsToPercent, percentToBps } from '../../lib/format'
   import { listMembers, type Member } from '../../lib/members'
@@ -70,6 +71,20 @@
     }
   }
 
+  async function remove() {
+    if (!confirm(`Hapus member "${form.name}"? Tindakan ini tidak bisa dibatalkan.`)) return
+    busy = true
+    error = ''
+    try {
+      await del(`/api/members/${id}`)
+      location.hash = '#/members'
+    } catch (err) {
+      error = (err as Error).message
+    } finally {
+      busy = false
+    }
+  }
+
   load()
 </script>
 
@@ -98,6 +113,9 @@
         {#if error}<p class="error">{error}</p>{/if}
       </div>
       <div class="form-actions">
+        {#if id !== null}
+          <button type="button" class="delete" disabled={busy} onclick={remove}><Icon name="trash" /> Hapus</button>
+        {/if}
         <a class="button" href="#/members">Batal</a>
         <button class="primary" disabled={busy}>Simpan</button>
       </div>
@@ -106,3 +124,10 @@
     <p class="error">{error}</p>
   {/if}
 </Modal>
+
+<style>
+  .delete {
+    margin-right: auto;
+    color: var(--danger);
+  }
+</style>

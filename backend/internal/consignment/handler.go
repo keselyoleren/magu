@@ -22,6 +22,7 @@ func (h *Handler) Routes(r fiber.Router, admin fiber.Handler) {
 	r.Get("/members", admin, h.listMembers)
 	r.Post("/members", admin, h.saveMember)
 	r.Put("/members/:id", admin, h.saveMember)
+	r.Delete("/members/:id", admin, h.deleteMember)
 	h.stockRoutes(r, admin)
 	h.settlementRoutes(r, admin)
 	h.excelRoutes(r, admin)
@@ -76,6 +77,23 @@ func (h *Handler) saveMember(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(m)
+}
+
+func (h *Handler) deleteMember(c *fiber.Ctx) error {
+	id, err := int64Param(c, "id")
+	if err != nil {
+		return err
+	}
+	err = h.svc.DeleteMember(c.UserContext(), id)
+	switch {
+	case errors.Is(err, ErrMemberNotFound):
+		return fiber.NewError(fiber.StatusNotFound, err.Error())
+	case errors.Is(err, ErrMemberInUse):
+		return invalid(err.Error())
+	case err != nil:
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func invalid(msg string) error {
