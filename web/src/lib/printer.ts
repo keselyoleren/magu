@@ -97,14 +97,14 @@ function printHtml(html: string) {
     const frame = document.createElement('iframe')
     frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
     frame.srcdoc = html
+    // print() di Chrome baru kembali setelah dialog ditutup, dan afterprint terpanggil sebelum itu.
+    // Membuang iframe di dalam afterprint membuat print() tak pernah selesai dan halaman kasir membeku.
     frame.onload = () => {
       const view = frame.contentWindow!
-      view.onafterprint = () => {
-        frame.remove()
-        resolve()
-      }
       view.focus()
       view.print()
+      setTimeout(() => frame.remove())
+      resolve()
     }
     document.body.append(frame)
   })
